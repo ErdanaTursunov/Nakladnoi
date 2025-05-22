@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Объединение накладных в PDF</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.2em;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .main {
+            padding: 40px;
+        }
+
+        .upload-area {
+            border: 3px dashed #e0e6ed;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+            margin-bottom: 30px;
+            cursor: pointer;
+        }
+
+        .upload-area:hover {
+            border-color: #4facfe;
+            background-color: #f8fafc;
+        }
+
+        .upload-area.dragover {
+            border-color: #4facfe;
+            background-color: #e6f3ff;
+        }
+
+        .upload-icon {
+            font-size: 3em;
+            color: #cbd5e0;
+            margin-bottom: 15px;
+        }
+
+        .upload-text {
+            font-size: 1.2em;
+            color: #4a5568;
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            color: #718096;
+            font-size: 0.9em;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .settings {
+            background: #f7fafc;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+
+        .settings h3 {
+            color: #2d3748;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .radio-option:hover {
+            border-color: #4facfe;
+        }
+
+        .radio-option input[type="radio"] {
+            margin-right: 10px;
+            accent-color: #4facfe;
+        }
+
+        .radio-option input[type="radio"]:checked + label {
+            color: #4facfe;
+            font-weight: 600;
+        }
+
+        .radio-option:has(input:checked) {
+            border-color: #4facfe;
+            background-color: #e6f3ff;
+        }
+
+        .process-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+
+        .process-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .process-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .progress {
+            display: none;
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4facfe, #00f2fe);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            text-align: center;
+            color: #4a5568;
+            font-weight: 500;
+        }
+
+        .file-info {
+            display: none;
+            background: #f0fff4;
+            border: 1px solid #9ae6b4;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .file-info h4 {
+            color: #22543d;
+            margin-bottom: 5px;
+        }
+
+        .file-info p {
+            color: #276749;
+            font-size: 0.9em;
+        }
+
+        .error {
+            background: #fed7d7;
+            border: 1px solid #feb2b2;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .main {
+                padding: 20px;
+            }
+            
+            .radio-group {
+                flex-direction: column;
+            }
+            
+            .radio-option {
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📄 Объединение накладных</h1>
+            <p>Загрузите ZIP-архив с PDF накладными и создайте компактный документ</p>
+        </div>
+
+        <div class="main">
+            <div class="upload-area" onclick="document.getElementById('zipFile').click()">
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">Нажмите или перетащите ZIP-файл</div>
+                <div class="upload-hint">Архив должен содержать PDF-файлы накладных</div>
+                <input type="file" id="zipFile" class="file-input" accept=".zip" />
+            </div>
+
+            <div class="file-info" id="fileInfo">
+                <h4>Файл загружен:</h4>
+                <p id="fileDetails"></p>
+            </div>
+
+            <div class="error" id="errorMessage"></div>
+
+            <div class="settings">
+                <h3>⚙️ Настройки размещения</h3>
+                <div class="radio-group">
+                    <div class="radio-option">
+                        <input type="radio" id="layout4" name="layout" value="4" checked>
+                        <label for="layout4">4 накладные на лист (2×2)</label>
+                    </div>
+                    <div class="radio-option">
+                        <input type="radio" id="layout8" name="layout" value="8">
+                        <label for="layout8">8 накладных на лист (4×2)</label>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px; padding: 15px; background: #e8f4fd; border-radius: 8px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="cropTopLeft" style="margin-right: 10px; accent-color: #4facfe;">
+                        <span>🎯 Обрезать левый верхний угол (если накладные в сетке 2×2)</span>
+                    </label>
+                    <div style="font-size: 0.9em; color: #666; margin-top: 5px; margin-left: 20px;">
+                        Извлекает только левый верхний квадрант каждой накладной
+                    </div>
+                </div>
+            </div>
+
+            <button class="process-btn" id="processBtn" disabled>
+                🔄 Обработать накладные
+            </button>
+
+            <div class="progress" id="progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text" id="progressText">Обработка...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Настройка PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        let selectedFile = null;
+        let pdfFiles = [];
+
+        // Элементы DOM
+        const zipFileInput = document.getElementById('zipFile');
+        const uploadArea = document.querySelector('.upload-area');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileDetails = document.getElementById('fileDetails');
+        const processBtn = document.getElementById('processBtn');
+        const progress = document.getElementById('progress');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // Drag & Drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect(files[0]);
+            }
+        });
+
+        zipFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        async function handleFileSelect(file) {
+            if (!file.name.toLowerCase().endsWith('.zip')) {
+                showError('Пожалуйста, выберите ZIP-файл');
+                return;
+            }
+
+            selectedFile = file;
+            fileDetails.textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(2)} МБ)`;
+            fileInfo.style.display = 'block';
+            errorMessage.style.display = 'none';
+
+            try {
+                await extractPDFsFromZip(file);
+                processBtn.disabled = false;
+            } catch (error) {
+                showError('Ошибка при чтении ZIP-файла: ' + error.message);
+            }
+        }
+
+        async function extractPDFsFromZip(file) {
+            const zip = new JSZip();
+            const zipData = await zip.loadAsync(file);
+            pdfFiles = [];
+
+            for (const [filename, zipEntry] of Object.entries(zipData.files)) {
+                // Фильтруем служебные файлы macOS и скрытые файлы
+                if (filename.toLowerCase().endsWith('.pdf') && 
+                    !zipEntry.dir && 
+                    !filename.startsWith('__MACOSX/') && 
+                    !filename.includes('/._') &&
+                    !filename.startsWith('._') &&
+                    !filename.includes('.DS_Store')) {
+                    
+                    const pdfData = await zipEntry.async('arraybuffer');
+                    
+                    // Проверяем, что файл не пустой и имеет минимальный размер PDF
+                    if (pdfData.byteLength > 100) {
+                        pdfFiles.push({
+                            name: filename,
+                            data: pdfData
+                        });
+                    }
+                }
+            }
+
+            if (pdfFiles.length === 0) {
+                throw new Error('В архиве не найдено валидных PDF-файлов');
+            }
+
+            fileDetails.textContent += ` | Найдено PDF: ${pdfFiles.length}`;
+        }
+
+        processBtn.addEventListener('click', async () => {
+            const layout = document.querySelector('input[name="layout"]:checked').value;
+            const cropTopLeft = document.getElementById('cropTopLeft').checked;
+            await processPDFs(parseInt(layout), cropTopLeft);
+        });
+
+        async function processPDFs(itemsPerPage, cropTopLeft = false) {
+            progress.style.display = 'block';
+            processBtn.disabled = true;
+
+            try {
+                // Определяем размещение
+                const layouts = {
+                    4: { cols: 2, rows: 2 },
+                    8: { cols: 4, rows: 2 } // Исправили: было 2 колонки, 4 ряда - сделали 4 колонки, 2 ряда
+                };
+                const layout = layouts[itemsPerPage];
+
+                updateProgress(10, 'Создание нового PDF...');
+
+                // Создаем новый PDF
+                const pdfDoc = await PDFLib.PDFDocument.create();
+                
+                // Размеры страницы A4
+                let pageWidth, pageHeight;
+                
+                if (itemsPerPage === 8) {
+                    // Для 8 накладных используем альбомную ориентацию (A4 повернутая)
+                    pageWidth = 841.89;  // Ширина альбомной A4
+                    pageHeight = 595.28; // Высота альбомной A4
+                } else {
+                    // Для 4 накладных обычная книжная ориентация
+                    pageWidth = 595.28;  // Ширина книжной A4
+                    pageHeight = 841.89; // Высота книжной A4
+                }
+                
+                // Размеры каждой миниатюры с меньшими отступами
+                const itemWidth = pageWidth / layout.cols;
+                const itemHeight = pageHeight / layout.rows;
+                
+                // Уменьшаем отступы для лучшего заполнения
+                const margin = 5; // Уменьшили с 10 до 5
+                const actualItemWidth = itemWidth - margin * 2;
+                const actualItemHeight = itemHeight - margin * 2;
+
+                let processedCount = 0;
+                
+                for (let i = 0; i < pdfFiles.length; i += itemsPerPage) {
+                    updateProgress(20 + (i / pdfFiles.length) * 60, `Обработка страницы ${Math.floor(i / itemsPerPage) + 1}...`);
+                    
+                    const page = pdfDoc.addPage([pageWidth, pageHeight]);
+                    
+                    for (let j = 0; j < itemsPerPage && (i + j) < pdfFiles.length; j++) {
+                        const pdfFile = pdfFiles[i + j];
+                        
+                        try {
+                            // Конвертируем PDF в изображение с помощью PDF.js
+                            const pdfData = new Uint8Array(pdfFile.data);
+                            const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+                            const pdf = await loadingTask.promise;
+                            
+                            if (pdf.numPages === 0) {
+                                console.warn(`PDF файл ${pdfFile.name} не содержит страниц`);
+                                continue;
+                            }
+                            
+                            // Получаем первую страницу
+                            const pdfPage = await pdf.getPage(1);
+                            let viewport = pdfPage.getViewport({ scale: 3 }); // Увеличили масштаб с 2 до 3 для лучшего качества
+                            
+                            // Если нужно обрезать левый верхний угол
+                            let cropArea = null;
+                            if (cropTopLeft) {
+                                // Определяем область обрезки (левый верхний квадрант)
+                                cropArea = {
+                                    x: 0,
+                                    y: 0,
+                                    width: viewport.width / 2,
+                                    height: viewport.height / 2
+                                };
+                                
+                                // Создаем новый viewport только для обрезанной области
+                                viewport = pdfPage.getViewport({ 
+                                    scale: 3,
+                                    offsetX: 0,
+                                    offsetY: 0
+                                });
+                            }
+                            
+                            // Создаем canvas для рендеринга
+                            const canvas = document.createElement('canvas');
+                            const context = canvas.getContext('2d');
+                            
+                            if (cropTopLeft) {
+                                // Размеры canvas для обрезанной области
+                                canvas.width = cropArea.width;
+                                canvas.height = cropArea.height;
+                            } else {
+                                // Полный размер
+                                canvas.width = viewport.width;
+                                canvas.height = viewport.height;
+                            }
+                            
+                            // Рендерим PDF страницу в canvas
+                            const renderContext = {
+                                canvasContext: context,
+                                viewport: viewport
+                            };
+                            await pdfPage.render(renderContext).promise;
+                            
+                            let imageData;
+                            if (cropTopLeft) {
+                                // Обрезаем левый верхний угол
+                                const croppedCanvas = document.createElement('canvas');
+                                const croppedContext = croppedCanvas.getContext('2d');
+                                croppedCanvas.width = cropArea.width;
+                                croppedCanvas.height = cropArea.height;
+                                
+                                // Копируем левый верхний квадрант
+                                croppedContext.drawImage(
+                                    canvas, 
+                                    0, 0, cropArea.width, cropArea.height, // Источник
+                                    0, 0, cropArea.width, cropArea.height  // Назначение
+                                );
+                                
+                                imageData = croppedCanvas.toDataURL('image/png');
+                            } else {
+                                imageData = canvas.toDataURL('image/png');
+                            }
+                            const imageBytes = Uint8Array.from(atob(imageData.split(',')[1]), c => c.charCodeAt(0));
+                            
+                            // Встраиваем изображение в PDF
+                            const pdfImage = await pdfDoc.embedPng(imageBytes);
+                            
+                            // Вычисляем позицию на листе
+                            const col = j % layout.cols;
+                            const row = Math.floor(j / layout.cols);
+                            
+                            const x = col * itemWidth + margin;
+                            const y = pageHeight - (row + 1) * itemHeight + margin;
+                            
+                            // Получаем размеры изображения
+                            const { width: imgWidth, height: imgHeight } = pdfImage.scale(1);
+                            
+                            // Более агрессивное масштабирование для полного заполнения
+                            const scaleX = actualItemWidth / imgWidth;
+                            const scaleY = actualItemHeight / imgHeight;
+                            
+                            // Используем максимальный масштаб для полного заполнения области
+                            const scale = Math.max(scaleX, scaleY); // Убрали коэффициент 0.95
+                            
+                            const scaledWidth = imgWidth * scale;
+                            const scaledHeight = imgHeight * scale;
+                            
+                            // Центрируем в области (может выходить за границы, но заполнит полностью)
+                            const centerX = x + (actualItemWidth - scaledWidth) / 2;
+                            const centerY = y + (actualItemHeight - scaledHeight) / 2;
+                            
+                            // Добавляем изображение на страницу с обрезкой по границам ячейки
+                            page.drawImage(pdfImage, {
+                                x: centerX,
+                                y: centerY,
+                                width: scaledWidth,
+                                height: scaledHeight
+                            });
+                            
+                            // Создаем маску для обрезки - рисуем белый прямоугольник поверх областей, которые выходят за границы
+                            if (scaledWidth > actualItemWidth || scaledHeight > actualItemHeight) {
+                                // Закрашиваем области вне ячейки белым цветом
+                                const pageColor = PDFLib.rgb(1, 1, 1); // Белый фон
+                                
+                                // Верхняя полоса
+                                if (centerY + scaledHeight > y + actualItemHeight) {
+                                    page.drawRectangle({
+                                        x: x,
+                                        y: y + actualItemHeight,
+                                        width: actualItemWidth,
+                                        height: Math.max(0, centerY + scaledHeight - (y + actualItemHeight)),
+                                        color: pageColor
+                                    });
+                                }
+                                
+                                // Нижняя полоса
+                                if (centerY < y) {
+                                    page.drawRectangle({
+                                        x: x,
+                                        y: Math.max(0, centerY),
+                                        width: actualItemWidth,
+                                        height: Math.max(0, y - centerY),
+                                        color: pageColor
+                                    });
+                                }
+                                
+                                // Левая полоса
+                                if (centerX < x) {
+                                    page.drawRectangle({
+                                        x: Math.max(0, centerX),
+                                        y: y,
+                                        width: Math.max(0, x - centerX),
+                                        height: actualItemHeight,
+                                        color: pageColor
+                                    });
+                                }
+                                
+                                // Правая полоса
+                                if (centerX + scaledWidth > x + actualItemWidth) {
+                                    page.drawRectangle({
+                                        x: x + actualItemWidth,
+                                        y: y,
+                                        width: Math.max(0, centerX + scaledWidth - (x + actualItemWidth)),
+                                        height: actualItemHeight,
+                                        color: pageColor
+                                    });
+                                }
+                            }
+                            
+                            // Добавляем тонкую рамку вокруг области (опционально)
+                            page.drawRectangle({
+                                x: x,
+                                y: y,
+                                width: actualItemWidth,
+                                height: actualItemHeight,
+                                borderColor: PDFLib.rgb(0.8, 0.8, 0.8),
+                                borderWidth: 0.3 // Сделали рамку тоньше
+                            });
+                            
+                            // Добавляем имя файла под миниатюрой (меньший размер)
+                            const fontSize = 6; // Уменьшили размер текста
+                            const textY = y - 12; // Приблизили текст к рамке
+                            if (textY > 0) {
+                                // Убираем кириллицу и оставляем только безопасные символы
+                                const safeFileName = pdfFile.name
+                                    .replace('.pdf', '')
+                                    .replace(/[^\x00-\x7F]/g, '') // Убираем не-ASCII символы
+                                    .substring(0, 25); // Увеличили лимит символов
+                                
+                                if (safeFileName.length > 0) {
+                                    page.drawText(safeFileName, {
+                                        x: x + 2,
+                                        y: textY,
+                                        size: fontSize,
+                                        color: PDFLib.rgb(0.4, 0.4, 0.4)
+                                    });
+                                }
+                            }
+                            
+                        } catch (error) {
+                            console.error(`Ошибка обработки файла ${pdfFile.name}:`, error);
+                            
+                            // Если PDF не удалось обработать, рисуем заглушку
+                            const col = j % layout.cols;
+                            const row = Math.floor(j / layout.cols);
+                            
+                            const x = col * itemWidth + margin;
+                            const y = pageHeight - (row + 1) * itemHeight + margin;
+                            
+                            // Рамка для ошибки
+                            page.drawRectangle({
+                                x: x,
+                                y: y,
+                                width: actualItemWidth,
+                                height: actualItemHeight,
+                                borderColor: PDFLib.rgb(1, 0.3, 0.3),
+                                borderWidth: 1,
+                                color: PDFLib.rgb(1, 0.95, 0.95)
+                            });
+                            
+                            // Текст ошибки
+                            page.drawText('Error loading PDF', {
+                                x: x + 10,
+                                y: y + actualItemHeight/2,
+                                size: 10,
+                                color: PDFLib.rgb(0.8, 0, 0)
+                            });
+                            
+                            // Безопасное имя файла
+                            const safeFileName = pdfFile.name
+                                .replace(/[^\x00-\x7F]/g, '') // Убираем кириллицу
+                                .substring(0, 15);
+                            
+                            if (safeFileName.length > 0) {
+                                page.drawText(safeFileName, {
+                                    x: x + 10,
+                                    y: y + actualItemHeight/2 - 15,
+                                    size: 8,
+                                    color: PDFLib.rgb(0.5, 0, 0)
+                                });
+                            }
+                        }
+                    }
+                }
+
+                updateProgress(90, 'Сохранение PDF...');
+
+                // Сохраняем результат
+                const pdfBytes = await pdfDoc.save();
+                
+                updateProgress(100, 'Готово!');
+
+                // Скачиваем файл
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                
+                // Имя файла с указанием ориентации
+                const orientation = itemsPerPage === 8 ? 'альбомная' : 'книжная';
+                a.download = `накладные_${itemsPerPage}_на_лист_${orientation}.pdf`;
+                
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                setTimeout(() => {
+                    progress.style.display = 'none';
+                    processBtn.disabled = false;
+                }, 1500);
+
+            } catch (error) {
+                showError('Ошибка при обработке: ' + error.message);
+                progress.style.display = 'none';
+                processBtn.disabled = false;
+            }
+        }
+
+        function updateProgress(percent, text) {
+            progressFill.style.width = percent + '%';
+            progressText.textContent = text;
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
