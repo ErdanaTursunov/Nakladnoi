@@ -89,6 +89,18 @@
             font-size: 0.9em;
         }
 
+        .upload-separator {
+            display: flex;
+            align-items: center;
+            margin: 20px 0;
+        }
+
+        .separator-line {
+            flex: 1;
+            height: 1px;
+            background: #e2e8f0;
+        }
+
         .file-input {
             display: none;
         }
@@ -309,6 +321,19 @@
                 <input type="file" id="zipFile" class="file-input" accept=".zip" />
             </div>
 
+            <div class="upload-separator">
+                <div class="separator-line"></div>
+                <div class="separator-text">или</div>
+                <div class="separator-line"></div>
+            </div>
+
+            <div class="upload-area" onclick="document.getElementById('pdfFiles').click()">
+                <div class="upload-icon">📄</div>
+                <div class="upload-text">Выберите несколько PDF файлов</div>
+                <div class="upload-hint">Можно выбрать сразу несколько PDF накладных</div>
+                <input type="file" id="pdfFiles" class="file-input" accept=".pdf" multiple />
+            </div>
+
             <div class="file-info" id="fileInfo">
                 <h4>Файл загружен:</h4>
                 <p id="fileDetails"></p>
@@ -364,7 +389,9 @@
 
         // Элементы DOM
         const zipFileInput = document.getElementById('zipFile');
+        const pdfFilesInput = document.getElementById('pdfFiles');
         const uploadArea = document.querySelector('.upload-area');
+        const uploadAreas = document.querySelectorAll('.upload-area');
         const fileInfo = document.getElementById('fileInfo');
         const fileDetails = document.getElementById('fileDetails');
         const processBtn = document.getElementById('processBtn');
@@ -373,39 +400,64 @@
         const progressText = document.getElementById('progressText');
         const errorMessage = document.getElementById('errorMessage');
 
-        // Drag & Drop
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
+        // Drag & Drop для обеих областей
+        uploadAreas.forEach((area, index) => {
+            area.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                area.classList.add('dragover');
+            });
 
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
+            area.addEventListener('dragleave', () => {
+                area.classList.remove('dragover');
+            });
 
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleFileSelect(files[0]);
-            }
+            area.addEventListener('drop', (e) => {
+                e.preventDefault();
+                area.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    if (index === 0) {
+                        // Первая область - для ZIP
+                        if (files[0].name.toLowerCase().endsWith('.zip')) {
+                            handleZipFileSelect(files[0]);
+                        } else {
+                            showError('В первую область можно загружать только ZIP-файлы');
+                        }
+                    } else {
+                        // Вторая область - для PDF
+                        const pdfFiles = Array.from(files).filter(file => 
+                            file.name.toLowerCase().endsWith('.pdf')
+                        );
+                        if (pdfFiles.length > 0) {
+                            handlePdfFilesSelect(pdfFiles);
+                        } else {
+                            showError('Во вторую область можно загружать только PDF-файлы');
+                        }
+                    }
+                }
+            });
         });
 
         zipFileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
-                handleFileSelect(e.target.files[0]);
+                handleZipFileSelect(e.target.files[0]);
             }
         });
 
-        async function handleFileSelect(file) {
+        pdfFilesInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handlePdfFilesSelect(Array.from(e.target.files));
+            }
+        });
+
+        async function handleZipFileSelect(file) {
             if (!file.name.toLowerCase().endsWith('.zip')) {
                 showError('Пожалуйста, выберите ZIP-файл');
                 return;
             }
 
             selectedFile = file;
-            fileDetails.textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(2)} МБ)`;
+            fileDetails.textContent = `ZIP: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} МБ)`;
             fileInfo.style.display = 'block';
             errorMessage.style.display = 'none';
 
@@ -415,6 +467,32 @@
             } catch (error) {
                 showError('Ошибка при чтении ZIP-файла: ' + error.message);
             }
+        }
+
+        async function handlePdfFilesSelect(files) {
+            selectedFile = null;
+            pdfFiles = [];
+            
+            for (const file of files) {
+                if (file.name.toLowerCase().endsWith('.pdf')) {
+                    const arrayBuffer = await file.arrayBuffer();
+                    pdfFiles.push({
+                        name: file.name,
+                        data: arrayBuffer
+                    });
+                }
+            }
+
+            if (pdfFiles.length === 0) {
+                showError('Не найдено валидных PDF-файлов');
+                return;
+            }
+
+            const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+            fileDetails.textContent = `PDF файлы: ${pdfFiles.length} шт. (${(totalSize / 1024 / 1024).toFixed(2)} МБ)`;
+            fileInfo.style.display = 'block';
+            errorMessage.style.display = 'none';
+            processBtn.disabled = false;
         }
 
         async function extractPDFsFromZip(file) {
